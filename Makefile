@@ -1,63 +1,4 @@
-# Makefile for building Arduino sketches (programs) with Arduino from the
-# command line.
-#
-#  * By default compiles with a lot more warnings, to detect shoddy progamming.
-#    Comment out some of the OPT_WARN lines to turn this off.
-#  * To make your C++ source files (.cpp) compile with any Arduino version, use
-#    something like this:
-#      #if ARDUINO >= 100
-#      #include <Arduino.h>
-#      #else
-#      #include <WProgram.h>
-#      #endif
-#
-# Detailed instructions for using this Makefile:
-#
-#  1. Copy this file into the directory with your sketch.
-#     There should be a file with the extension .ino (previously .pde).
-#     cd into this directory.
-#
-#  2. Below, modify the settings of various variables, but at least
-#        PROJECT
-#        ARDUINO_MODEL
-#        PORT
-#        ARDUINO
-#        ARDUINO_DIR
-#        ARDUINO_VARIANT
-#        ARDUINO_LIBS and USER_LIBS
-#
-#     Check the other variables, but they're not likely needing to change.
-#     See the descriptions at the variables for details.
-#
-#  3. Function prototypes. (Not super necessary, but helps if you have issues)
-#     Sorry, they're necessary with every programming. The Arduino IDE tries
-#     to create them automatically and does get it mostly (but not always)
-#     right.
-#     If you know of a way to create prototypes automaticlly, let me know.
-#     It might be easiest to start with the prototypes created by the IDE.
-#     Run the build in the IDE, locate the project source file created by the
-#     IDE (for a project XYZ it's something like
-#     /tmp/build4303013692903917981.tmp/XYZ.cpp, and copy the prototypes.
-#     They're just before the first variable that is declared.
-#
-#     If you have multiple .ino/.pde files, put the prototypes for all of them
-#     into the main file (XYZ.ino).
-#
-#  4. Run "make" to compile/verify your program.
-#
-#  5. Run "make upload" (or "make up" for short) to upload your program to the
-#     Arduino board. The board is reset first.
-#
-#  6. Run "make help" for more options.
-#
-#
-# ToDo:
-#  * Expand the USB_PID and USB_VID detection for other build_extras, as defined
-#    in the Platforms.txt and Boards.txt files.
-#
-#
-# Makefile version (only used for help text).
-MKVERSION = 1.0
+MKVERSION = 2.0
 
 # Determine operating system environment.
 # Possible values are (tested): Linux, FreeBSD (on 8.1), ...
@@ -65,7 +6,7 @@ OSNAME =	$(shell uname)
 
 # Name of the program and source .ino (previously .pde) file.
 # No extension here (e.g. PROJECT = Blink).
-PROJECT ?=	Nightlight
+PROJECT ?=	planter
 
 # Project version. Only used for packing the source into an archive.
 VERSION ?=	1.0
@@ -98,7 +39,7 @@ ARCH ?= avr
 # It is a good idea to use udev rules to create a device name that is constant,
 # based on the serial number etc. of the USB device.
 # PORT ?=		/dev/serial/by-id/*Arduino*
-PORT ?=		/dev/ttyUSB0
+PORT ?=		/dev/arduino-uno-*
 
 # Arduino version (e.g. 23 for 0023, or 105 for 1.0.5).
 # Make sure this matches ARDUINO_DIR below!
@@ -108,8 +49,12 @@ ARDUINO ?= 	161
 # Location of the official Arduino IDE.
 # E.g. /usr/local/arduino, or $(HOME)/arduino
 # Make sure this matches ARDUINO above!
-#ARDUINO_DIR =	/usr/local/pckg/arduino/arduino-0023
 ARDUINO_DIR ?=	/usr/share/arduino
+
+
+BACKUPDIR = backup
+MEMORYTYPES = flash eeprom lfuse hfuse efuse calibration lock signature
+
 
 # Arduino 0.x based on 328P now need the new programmer protocol.
 # Arduino 1.6+ uses the avr109 programmer by default
@@ -117,21 +62,6 @@ ARDUINO_DIR ?=	/usr/share/arduino
 # If unset, a default is chosen based on ARDUINO_MODEL and ARDUINO_FAMILY.
 # AVRDUDE_PROGRAMMER = usbasp
 # AVRDUDE_PROGRAMMER = avr109
-
-# Arduino core sources.
-#ARDUINO_CORE ?=	$(ARDUINO_DIR)/hardware/archlinux-arduino/avr/cores/arduino
-
-# Standard Arduino libraries used, e.g. EEPROM, LiquidCrystal.
-# Give the name of the directory containing the library source files.
-ifndef ARDUINO_LIBS
-ARDUINO_LIBS =
-ARDUINO_LIBS += EEPROM
-ARDUINO_LIBS += Wire
-ARDUINO_LIBS += SPI
-ifdef SD  # Comment out this condition to always use the SD library.
-ARDUINO_LIBS += SD
-endif
-endif
 
 # User libraries (in ~/sketchbook/libraries/).
 # Give the name of the directory containing the library source files.
@@ -144,7 +74,7 @@ USER_LIBS ?=
 # If the library is in a location the compiler doesn't already know, also
 # give the directory with -L.
 # Note this is dealing with real libraries (libXXX.a), not Arduino "libraries"!
-LDLIBS ?=
+LDLIBS ?= -lsangster_atmega328p
 LDLIBS +=	-lm
 
 LISTING_ARGS =	-h -S
@@ -196,10 +126,6 @@ TARFILE =	$(PROJECT)-$(VERSION).tar
 
 # Default reset command if still unset.
 RESETCMD ?=	stty
-
-# Set Arduino core sources location to default, if still unset.
-# ARDUINO_CORE ?= $(ARDUINO_DIR)/hardware/arduino/avr/cores/arduino
-ARDUINO_CORE ?= $(ARDUINO_DIR)/hardware/archlinux-arduino/avr/cores/arduino
 
 # Get the upload rate, CPU model, CPU frequency, avrdude programmer type
 # and other variables from the IDE files.
@@ -256,139 +182,49 @@ endif
 
 ### Sources
 
-# Arduino core sources.
-CORESRC =	$(wildcard $(ARDUINO_CORE)/*.c)
-CORECXXSRC =	$(wildcard $(ARDUINO_CORE)/*.cpp)
-COREASMSRC =	$(wildcard $(ARDUINO_CORE)/*.S)
-
-# Arduino official library sources.
-# 1.0.x: search in root and utility folders
-# 1.5.x: search in src folder as well.
-# 1.5.x: search also in src/$(ARCH) (for Servo)
-# https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification
-# 1.5.x: search in hardware folder + utility (for Wire/twi)
-# https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5---3rd-party-Hardware-specification
-ALIBDIRS = $(wildcard \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/libraries/%) \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/libraries/%/utility) \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/libraries/%/src) \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/libraries/%/src/$(ARCH)) \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/hardware/archlinux-arduino/avr/libraries/%) \
-		$(ARDUINO_LIBS:%=$(ARDUINO_DIR)/hardware/archlinux-arduino/avr/libraries/%/utility) \
-		)
-ALIBSRC =	$(wildcard $(ALIBDIRS:%=%/*.c))
-ALIBCXXSRC =	$(wildcard $(ALIBDIRS:%=%/*.cpp))
-ALIBASMSRC =	$(wildcard $(ALIBDIRS:%=%/*.S))
-
-# All Arduino library sources.
-ARDUINO_ALL_LIBS = $(notdir $(wildcard $(ARDUINO_DIR)/libraries/*))
-ALIBALLDIRS = $(wildcard \
-		$(ARDUINO_ALL_LIBS:%=$(ARDUINO_DIR)/libraries/%) \
-		$(ARDUINO_ALL_LIBS:%=$(ARDUINO_DIR)/libraries/%/utility) \
-		)
-ALIBALLSRC =	$(wildcard $(ALIBALLDIRS:%=%/*.c))
-ALIBALLCXXSRC =	$(wildcard $(ALIBALLDIRS:%=%/*.cpp))
-ALIBALLASMSRC =	$(wildcard $(ALIBALLDIRS:%=%/*.S))
-
 # User library sources.
 ULIBDIRS = $(wildcard \
 		$(USER_LIBS:%=$(USER_LIBDIR)/%) \
 		$(USER_LIBS:%=$(USER_LIBDIR)/%/utility) \
 		)
 ULIBSRC =	$(wildcard $(ULIBDIRS:%=%/*.c))
-ULIBCXXSRC =	$(wildcard $(ULIBDIRS:%=%/*.cpp))
 ULIBASMSRC =	$(wildcard $(ULIBDIRS:%=%/*.S))
 
 # User program sources.
 SRC =		$(wildcard *.c)
-CXXSRC =
-CXXSRCINO =	$(wildcard *.ino) $(wildcard *.pde)
-prjino :=	$(findstring $(PROJECT).ino,$(CXXSRCINO))
-prjpde :=	$(findstring $(PROJECT).pde,$(CXXSRCINO))
-# Remove project.ino and project.pde from compilation.
-CXXSRCINO :=	$(filter-out $(PROJECT).ino $(PROJECT).pde,$(CXXSRCINO))
-# If project.ino or project.pde exist, add output/project.cpp to compilation.
-ifneq "" "$(prjino)$(prjpde)"
-CXXSRC +=	$(OUTPUT)$(if $(OUTPUT),/)$(PROJECT).cpp
-# Remove project.cpp from compilation if project.ino or project.pde exist.
-# (This will cause problems if OUTPUT is "."!)
-#CXXSRC :=	$(filter-out $(PROJECT).cpp,$(CXXSRC))
-endif
-# Add the remaining C++ sources; put project.* first to find errors soon.
-CXXSRC +=	$(wildcard *.cpp)
-# Assembler sources.
 ASRC =		$(wildcard *.S)
 
 # Paths to check for source files (pre-requisites).
 # (Note: The vpath directive clears the path if the argument is empty!)
-ifneq "$(ARDUINO_CORE)" ""
-  vpath % $(ARDUINO_CORE)
-endif
-ifneq "$(ALIBDIRS)" ""
-  vpath % $(ALIBDIRS)
-endif
-
 ifneq "$(ULIBDIRS)" ""
   vpath % $(ULIBDIRS)
 endif
 vpath % .
-ifneq "$(ALIBALLDIRS)" ""
-  vpath % $(ALIBALLDIRS)
-endif
-# Either ensure the path to vpath is not empty, or use the VPATH variable.
-# The manual says to separate paths with ":", but " " works as well.
-#VPATH = 	$(ARDUINO_CORE) $(ALIBDIRS) $(ULIBDIRS) . $(ALIBALLDIRS)
 
 
 ### Include directories.
 CINCS = \
-	-I$(ARDUINO_CORE) \
-	-I$(ARDUINO_VARIANT) \
-	$(ALIBDIRS:%=-I%) \
 	$(ULIBDIRS:%=-I%) \
 	-I.
 
 
 ### Object and dependencies files.
 
-# Arduino core.
-COREOBJ =	$(addprefix $(OUTPUT)/,$(notdir \
-			$(CORESRC:.c=.c.o) \
-			$(CORECXXSRC:.cpp=.cpp.o) \
-			$(COREASMSRC:.S=.S.o) \
-		))
-
-# Arduino libraries used.
-ALIBOBJ =	$(addprefix $(OUTPUT)/,$(notdir \
-			$(ALIBSRC:.c=.c.o) \
-			$(ALIBCXXSRC:.cpp=.cpp.o) \
-			$(ALIBASMSRC:.S=.S.o) \
-		))
-
-# All Arduino libraries.
-ALIBALLOBJ =	$(addprefix $(OUTPUT)/,$(notdir \
-			$(ALIBALLSRC:.c=.c.o) \
-			$(ALIBALLCXXSRC:.cpp=.cpp.o) \
-			$(ALIBALLASMSRC:.S=.S.o) \
-		))
-
 # User libraries used.
 ULIBOBJ =	$(addprefix $(OUTPUT)/,$(notdir \
 			$(ULIBSRC:.c=.c.o) \
-			$(ULIBCXXSRC:.cpp=.cpp.o) \
 			$(ULIBASMSRC:.S=.S.o) \
 		))
 
 # User program.
 OBJ =		$(addprefix $(OUTPUT)/,$(notdir \
 			$(SRC:.c=.c.o) \
-			$(CXXSRC:.cpp=.cpp.o) \
 			$(ASRC:.S=.S.o) \
 		))
 
 # All object files.
-#ALLOBJ =	$(COREOBJ) $(ALIBOBJ) $(ULIBOBJ) $(OBJ)
-ALLOBJ =	$(OBJ) $(ULIBOBJ) $(ALIBOBJ) $(COREOBJ)
+#ALLOBJ =	$(ULIBOBJ) $(OBJ)
+ALLOBJ =	$(OBJ) $(ULIBOBJ)
 
 # All dependencies files.
 ALLDEPS =	$(ALLOBJ:%.o=%.d)
@@ -401,7 +237,7 @@ CDEFS +=	-DARDUINO_$(BOARD)
 CDEFS +=	-DARDUINO_ARCH_$(shell echo $(ARCH) | tr '[a-z]' '[A-Z]')
 
 
-### C/C++ Compiler flags.
+### C Compiler flags.
 
 # C standard level.
 # c89   - ISO C90 ("ANSI" C)
@@ -409,14 +245,6 @@ CDEFS +=	-DARDUINO_ARCH_$(shell echo $(ARCH) | tr '[a-z]' '[A-Z]')
 # c99   - ISO C99 standard (not yet fully implemented)
 # gnu99 - c99 plus GCC extensions (default for C)
 CSTANDARD =	-std=gnu99
-
-# C++ standard level.
-# empty   - default
-# c++98   - 1998 ISO C++ standard plus amendments. ("ANSI" C++)
-# gnu++98 - c++98 plus GNU extensions (default for C++)
-# c++0x   - working draft of upcoming ISO C++0x standard; experimental
-# gnu++0x - c++0x plus GNU extensions
-CXXSTANDARD =	-std=gnu++0x
 
 # Optimisations.
 OPT_OPTIMS =	-Os
@@ -458,9 +286,6 @@ ifndef OPT_WARN_C
 OPT_WARN_C =	$(OPT_WARN)
 OPT_WARN_C +=	-Wmissing-prototypes
 endif
-ifndef OPT_WARN_CXX
-OPT_WARN_CXX =	$(OPT_WARN)
-endif
 
 # Other.
 ifndef OPT_OTHER
@@ -471,17 +296,13 @@ OPT_OTHER =
 # Automatically enable build.extra_flags if needed
 # Used by Micro and other devices to fill in USB_PID and USB_VID
 OPT_OTHER +=	-DUSB_VID=$(VID) -DUSB_PID=$(PID)
-OPT_OTHER += -fno-use-cxa-atexit
+OPT_CPP_OTHER = -fno-use-cxa-atexit
 endif
 
 # Final combined.
 CFLAGS =	-mmcu=$(MCU) \
 		$(OPT_OPTIMS) $(OPT_DEBUG) $(CSTANDARD) $(CDEFS) \
 		$(OPT_WARN) $(OPT_OTHER) $(CEXTRA)
-CXXFLAGS =	-mmcu=$(MCU) \
-		$(OPT_OPTIMS) $(OPT_DEBUG) $(CXXSTANDARD) $(CDEFS) \
-		$(OPT_WARN) $(OPT_OTHER) $(CEXTRA)
-
 
 ### Assembler flags.
 
@@ -516,27 +337,30 @@ AVRDUDE_FLAGS =
 # Override invalid signature check.
 #AVRDUDE_FLAGS+= -F
 
-# Disable auto erase for flash memory. (IDE uses this too.)
-AVRDUDE_FLAGS+= -D
-
 # Quiet -q -qq / Verbose -v -vv.
 AVRDUDE_FLAGS+= -q
 
+ifeq "$(AVRDUDE_PROGRAMMER)" "jtag2isp"
+AVRDUDE_FLAGS+= -p $(MCU) -c $(AVRDUDE_PROGRAMMER)
+else
+# Disable auto erase for flash memory. (IDE uses this too.)
+AVRDUDE_FLAGS+= -D
 AVRDUDE_FLAGS+= -p $(MCU) -c $(AVRDUDE_PROGRAMMER) -b $(UPLOAD_RATE)
 AVRDUDE_FLAGS+= -P $(PORT)
 
 # avrdude config file
 AVRDUDE_FLAGS+= -C /etc/avrdude.conf
 #AVRDUDE_FLAGS+= -C $(ARDUINO_DIR)/hardware/tools/avr/etc/avrdude.conf
+endif
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(OUTPUT)/$(PROJECT).hex:i
-
+AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(OUTPUT)/$(PROJECT).eep:i
+AVRDUDE_READ_BACKUP  = -U $$memory:r:$(BACKUPDIR)/$(MCU).$$memory.hex:i
 
 ### Programs
 
 AVRPREFIX =	avr-
 CC =		$(AVR_TOOLS_PATH)$(AVRPREFIX)gcc
-CXX =		$(AVR_TOOLS_PATH)$(AVRPREFIX)g++
 OBJCOPY =	$(AVR_TOOLS_PATH)$(AVRPREFIX)objcopy
 OBJDUMP =	$(AVR_TOOLS_PATH)$(AVRPREFIX)objdump
 AR =		$(AVR_TOOLS_PATH)$(AVRPREFIX)ar
@@ -560,16 +384,6 @@ endif
 .SUFFIXES: .ino .pde .elf .hex .eep .lss .listing .sym .symbol
 .SUFFIXES: .cpp .c .S .o .a
 
-# Compile: create object files from C++ source files.
-%.cpp.o $(OUTPUT)/%.cpp.o: %.cpp
-	$(CXX) -o $@ -c $(CXXFLAGS) $< \
-	  -MMD -MP -MF"$(@:%.cpp.o=%.d)" -MT"$@ $(@:%.cpp.o=%.S) $(@:%.cpp.o=%.d)" \
-	  $(CINCS)
-	if [ -f "$(notdir $(@:.cpp.o=.s))" -a ! -f "$(@:.cpp.o=.s)" ]; then \
-	  mv "$(notdir $(@:.cpp.o=.s))" "$(dir $@)"; fi
-	if [ -f "$(notdir $(@:.cpp.o=.ii))" -a ! -f "$(@:.cpp.o=.ii)" ]; then \
-	  mv "$(notdir $(@:.cpp.o=.ii))" "$(dir $@)"; fi
-
 # Compile: create object files from C source files.
 %.c.o $(OUTPUT)/%.c.o: %.c
 	$(CC) -o $@ -c $(CFLAGS) $< \
@@ -579,12 +393,6 @@ endif
 	  mv "$(notdir $(@:.c.o=.s))" "$(dir $@)"; fi
 	if [ -f "$(notdir $(@:.c.o=.i))" -a ! -f "$(@:.c.o=.i)" ]; then \
 	  mv "$(notdir $(@:.c.o=.i))" "$(dir $@)"; fi
-
-# Compile: create assembler files from C++ source files.
-%.S $(OUTPUT)/%.S: %.cpp
-	$(CXX) -o $@ -S $(CXXFLAGS) $< \
-	  -MMD -MP -MF"$(@:%.S=%.d)" -MT"$(@:%.S=%.o) $@ $(@:%.S=%.d)" \
-	  $(CINCS)
 
 # Compile: create assembler files from C source files.
 %.S $(OUTPUT)/%.S: %.c
@@ -619,26 +427,6 @@ endif
 %.sym %.symbol: %.elf
 #	$(NM) $(SYMBOL_ARGS) $< > $@
 	$(NM) $(SYMBOL_ARGS) $< | uniq > $@
-
-# Pre-processing of Arduino .ino/.pde source files.
-# It creates a .cpp file based with the same name as the .pde file.
-# On top of the new .cpp file comes the Arduino.h/WProgram.h header.
-# Then the .cpp file will be compiled. Errors during compile will
-# refer to this new, automatically generated, file.
-# Not the original .pde file you actually edit...
-$(OUTPUT)/%.cpp: %.ino
-	echo >  $@ "// Automatically generated by Makefile. Don't edit."
-	echo >> $@ "#include <Arduino.h>"
-	cat  >> $@ $< $(CXXSRCINO)
-$(OUTPUT)/%.cpp: %.pde
-	echo > $@ "// Automatically generated by Makefile. Don't edit."
-	echo >> $@ "#if ARDUINO >= 100"
-	echo >> $@ "#include <Arduino.h>"
-	echo >> $@ "#else"
-	echo >> $@ "#include <WProgram.h>"
-	echo >> $@ "#endif"
-	cat  >> $@ $< $(CXXSRCINO)
-
 
 ### Explicit rules.
 
@@ -704,28 +492,18 @@ showvars2:
 	: AVRDUDE = "$(AVRDUDE)"
 	: AVRDUDE_FLAGS = "$(AVRDUDE_FLAGS)"
 	: AVRDUDE_WRITE_FLASH = "$(AVRDUDE_WRITE_FLASH)"
+	: AVRDUDE_WRITE_EEPROM = "$(AVRDUDE_WRITE_EEPROM)"
+	: AVRDUDE_READ_BACKUP = "$(AVRDUDE_READ_BACKUP)"
+	: BACKUPDIR = "$(BACKUPDIR)"
 	: ARDUINO_DIR = "$(ARDUINO_DIR)"
-	: ARDUINO_CORE = "$(ARDUINO_CORE)"
 	: ARDUINO_VARIANT = "$(ARDUINO_VARIANT)"
-	: ARDUINO_LIBS = "$(ARDUINO_LIBS)"
-	: ALIBDIRS = "$(ALIBDIRS)"
 	: USER_LIBS = "$(USER_LIBS)"
 	: ULIBDIRS = "$(ULIBDIRS)"
 	: CINCS = "$(CINCS)"
 	: SRC = "$(SRC)"
-	: CXXSRC = "$(CXXSRC)"
-	: CXXSRCINO = "$(CXXSRCINO)"
 	: ASRC = "$(ASRC)"
 	: ULIBSRC = "$(ULIBSRC)"
-	: ULIBCXXSRC = "$(ULIBCXXSRC)"
-	: ALIBSRC = "$(ALIBSRC)"
-	: ALIBCXXSRC = "$(ALIBCXXSRC)"
-	: CORESRC = "$(CORESRC)"
-	: CORECXXSRC = "$(CORECXXSRC)"
 	: CFLAGS = "$(CFLAGS)"
-	: CXXFLAGS = "$(CXXFLAGS)"
-	: COREOBJ = "$(COREOBJ)"
-	: ALIBOBJ = "$(ALIBOBJ)"
 	: ULIBOBJ = "$(ULIBOBJ)"
 	: OBJ = "$(OBJ)"
 	: ALLOBJ = "$(ALLOBJ)"
@@ -738,19 +516,6 @@ showvars2:
 mkout $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-# Create core library.
-$(OUTPUT)/libcore.a: $(COREOBJ)
-	$(AR) rcsv $@ $(COREOBJ)
-
-# Creating these other .a libraries is an experiment to find out whether
-# it reduces code size further. It doesn't, except for libcore.a.
-$(OUTPUT)/libduino.a: $(ALIBOBJ)
-	$(AR) rcsv $@ $(ALIBOBJ)
-
-$(OUTPUT)/libduinoall.a: CINCS += $(ALIBALLDIRS:%=-I%)
-$(OUTPUT)/libduinoall.a: $(ALIBALLOBJ)
-	$(AR) rcsv $@ $(ALIBALLOBJ)
-
 $(OUTPUT)/libuser.a: $(ULIBOBJ)
 	$(AR) rcsv $@ $(ULIBOBJ)
 
@@ -760,71 +525,59 @@ $(OUTPUT)/libapp.a: $(OBJ)
 $(OUTPUT)/libapp2.a: $(OBJ)
 	$(AR) rcsv $@ $(filter-out $(OUTPUT)/$(PROJECT).o,$(OBJ))
 
-$(OUTPUT)/liball.a: $(ULIBOBJ) $(ALIBOBJ) $(COREOBJ)
-	$(AR) rcsv $@ $(ULIBOBJ) $(ALIBOBJ) $(COREOBJ)
+$(OUTPUT)/liball.a: $(ULIBOBJ)
+	$(AR) rcsv $@ $(ULIBOBJ)
 
 # Link program from objects and libraries.
-$(OUTPUT)/$(PROJECT).elf: $(ALLOBJ) $(OUTPUT)/libcore.a
+$(OUTPUT)/$(PROJECT).elf: $(ALLOBJ)
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OBJ) \
 		$(ULIBOBJ) \
-		$(ALIBOBJ) \
-		-L$(OUTPUT) -lcore $(LDLIBS)
+		-L$(OUTPUT) $(LDLIBS)
 
 # Alternative linking. Experimental, goes with the additional .a libraries.
 # Don't make this dependent on $(OUTPUT), or circular re-makes occur.
 # _5.elf fails linking with unresolved setup(), loop().
 $(OUTPUT)/$(PROJECT)_2.elf: $(ALLOBJ)
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
-		$(OBJ) $(ULIBOBJ) $(ALIBOBJ) $(COREOBJ) \
+		$(OBJ) $(ULIBOBJ) \
 		$(LDLIBS)
 $(OUTPUT)/$(PROJECT)_3.elf: $(ALLOBJ)
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
-		$(COREOBJ) $(ALIBOBJ) $(ULIBOBJ) $(OBJ) \
+		$(ULIBOBJ) $(OBJ) \
 		$(LDLIBS)
-$(OUTPUT)/$(PROJECT)_4.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
+$(OUTPUT)/$(PROJECT)_4.elf: $(ALLOBJ) \
 				$(OUTPUT)/libduino.a $(OUTPUT)/libuser.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OBJ) \
-		-L$(OUTPUT) -luser -lduino -lcore $(LDLIBS)
-$(OUTPUT)/$(PROJECT)_5.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
+		-L$(OUTPUT) -luser -lduino $(LDLIBS)
+$(OUTPUT)/$(PROJECT)_5.elf: $(ALLOBJ) \
 		   $(OUTPUT)/libduino.a $(OUTPUT)/libuser.a $(OUTPUT)/libapp.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
-		-L$(OUTPUT) -lapp -luser -lduino -lcore $(LDLIBS)
-$(OUTPUT)/$(PROJECT)_6.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
+		-L$(OUTPUT) -lapp -luser -lduino $(LDLIBS)
+$(OUTPUT)/$(PROJECT)_6.elf: $(ALLOBJ) \
 		   $(OUTPUT)/libduino.a $(OUTPUT)/libuser.a $(OUTPUT)/libapp2.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OUTPUT)/$(PROJECT).o \
-		-L$(OUTPUT) -lapp2 -luser -lduino -lcore $(LDLIBS)
+		-L$(OUTPUT) -lapp2 -luser -lduino $(LDLIBS)
 # Try compiling in one big step, to ensure LTO works.
 # Doesn't link - collect2 says Wire.cpp has undef refs to functions in twi.c.
 # Changing order of sources doesn't fix that.
-$(OUTPUT)/$(PROJECT)_7.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
-		   $(OUTPUT)/libduino.a $(OUTPUT)/libuser.a $(OUTPUT)/libapp.a
-	$(CXX) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
-		$(SRC) $(CXXSRC) \
-		$(ULIBSRC) $(ULIBCXXSRC) \
-		$(ALIBSRC) $(ALIBCXXSRC) \
-		$(CORESRC) $(CORECXXSRC) \
-		$(filter-out -g2 -gstabs -std=gnu++0x -pedantic \
-			-Wextra,$(CXXFLAGS)) -fwhole-program -v \
-		$(CINCS) \
-		$(LDLIBS)
-$(OUTPUT)/$(PROJECT)_8.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
+$(OUTPUT)/$(PROJECT)_8.elf: $(ALLOBJ) \
 				$(OUTPUT)/libduinoall.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OBJ) \
 		$(ULIBOBJ) \
-		-L$(OUTPUT) -lduinoall -lcore $(LDLIBS)
+		-L$(OUTPUT) -lduinoall $(LDLIBS)
 $(OUTPUT)/$(PROJECT)_9.elf: $(ALLOBJ) $(OUTPUT)/liball.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OBJ) \
 		-L$(OUTPUT) -lall $(LDLIBS)
-$(OUTPUT)/$(PROJECT)_A.elf: $(ALLOBJ) $(OUTPUT)/libcore.a \
+$(OUTPUT)/$(PROJECT)_A.elf: $(ALLOBJ) \
 				$(OUTPUT)/libduino.a
 	$(CC) $(LDFLAGS) -Wl,-Map,$*.map,--cref -o $@ \
 		$(OBJ) $(ULIBOBJ) \
-		-L$(OUTPUT) -lduino -lcore $(LDLIBS)
+		-L$(OUTPUT) -lduino $(LDLIBS)
 
 # Convert ELF to COFF for use in debugging / simulating in AVR Studio or VMLAB.
 # UNTESTED
@@ -878,13 +631,26 @@ dtr:
 	$(STTY) -a | tr ' ' '\n' | grep hupcl
 
 # Program the Arduino board (upload program).
-upload up: hex reset
-	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH)
+ifeq "$(AVRDUDE_PROGRAMMER)" "jtag2isp"
+upload up: hex eep
+	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
+else
+upload up: hex eep reset
+	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
+endif
+
+
+backup:
+	$(shell mkdir -p $(BACKUPDIR) 2>/dev/null)
+	@for memory in $(MEMORYTYPES); do \
+		$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_READ_BACKUP); \
+	done
+
 
 # Create tar file.
 # TODO: Dependencies on the header files are missing.
 TAREXCL=	$(OUTPUT) back build debug
-$(TARFILE).bz2: $(SRC) $(CXXSRC)
+$(TARFILE).bz2: $(SRC)
 	PRJBASE=$$(basename "$$PWD"); \
 	cd ..; \
 	tar -cvf "$(TARFILE)$(suffix $@)" --bzip2 \
@@ -893,7 +659,7 @@ $(TARFILE).bz2: $(SRC) $(CXXSRC)
 	  --owner=root --group=root "$$PRJBASE" \
 	&& mv "$(TARFILE)$(suffix $@)" "$$OLDPWD" \
 	&& echo "" && echo "Created $(TARFILE)$(suffix $@)"
-$(TARFILE).xz: $(SRC) $(CXXSRC)
+$(TARFILE).xz: $(SRC)
 	PRJBASE=$$(basename "$$PWD"); \
 	cd ..; \
 	tar -cvf "$(TARFILE)$(suffix $@)" --xz \
@@ -905,21 +671,12 @@ $(TARFILE).xz: $(SRC) $(CXXSRC)
 
 # Single dependencies file for all sources.
 # This doesn't really work, so don't use it.
-depend: $(OUTPUT) $(CXXSRCINO)
+depend: $(OUTPUT)
 	$(CC) -M -mmcu=$(MCU) $(CDEFS) \
 	    $(CINCS) \
-	    $(CORESRC) \
-	    $(ALIBSRC) \
 	    $(ULIBSRC) \
 	    $(SRC) $(ASRC) \
 	    > $(DEPFILE)
-	$(CXX) -M -mmcu=$(MCU) $(CDEFS) \
-	    $(CINCS) \
-	    $(CORECXXSRC) \
-	    $(ALIBCXXSRC) \
-	    $(ULIBCXXSRC) \
-	    $(CXXSRC) \
-	    >> $(DEPFILE)
 
 # Target: clean project.
 CLEANEXT = .elf .hex .eep .cof .lss .sym .listing .symbol .map .log
@@ -934,7 +691,6 @@ clean:
 	  $(ALLOBJ) \
 	  $(ALLDEPS) \
 	  $(ALLOBJ:%.o=%.S) \
-	  $(ALIBALLOBJ) $(ALIBALLOBJ:.o=.d) \
 	  $(ALLOBJ:%.o=%.s) \
 	  $(ALLOBJ:%.o=%.i) \
 	  $(ALLOBJ:%.o=%.ii) \
