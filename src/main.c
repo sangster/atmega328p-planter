@@ -1,5 +1,20 @@
-/**
- * @file
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include <stdbool.h>
 #include <time.h>
@@ -29,31 +44,57 @@
 /*******************************************************************************
  * Constants
  ******************************************************************************/
-#define SCREEN_TIMEOUT  60 // seconds
+/**
+ * How long to keep the LCD screen on (in seconds) after the user's keypress.
+ */
+#define SCREEN_TIMEOUT  60
+
+/**
+ * How long to wait (in seconds) to check if the plant needs water after
+ * booting. When we start up, we don't know how long it's been since the plant
+ * was last watered, so we probably don't want to wait until the next normally
+ * scheduled time.
+ */
 #define STARTUP_PUMP_CHECK_TIME  10 * 60 // seconds
-/* #define STARTUP_LOG_TIME         5 * 60 // seconds */
-#define STARTUP_LOG_TIME         5 // seconds
-#define SD_TIMEZONE_OFFSET       -8 * 3600 // seconds
 
-// 1 second system check timer (62500 * 256) / 16e6 == 1 second
+/**
+ * How long to wait (in seconds) before writing to the log immediately after
+ * booting. It may be useful to capture stats shortly after starting up, so we
+ * don't want to wait unti the normal log schedule.
+ */
+#define STARTUP_LOG_TIME  2 * 60
+
+/**
+ * The timezone offset (seconds) use when creating file timestanps on the SD
+ * card.
+ */
+#define SD_TIMEZONE_OFFSET  -8 * 3600
+
+/**
+ * To avoid over-taxing some of the sensors, we only poll them every so many ms.
+ */
 #define CHECK_SYSTEM_MS  250
+
+/**
+ * The Moisture/Humidity/Temperature is even slower than other sensors and can
+ * only be polled once per second.
+ */
 #define CHECK_MHUM_MS   1000
+
+/**
+ * Calculate the number of clock cycles required to ensure `TIMER1` overflows
+ * after #CHECK_SYSTEM_MS milliseconds.
+ *
+ * @note At 16 MHz, 1 second == (62500 * 256) / 16e6 cycles
+ */
 #define SENSOR_CLKS  (62500 / (1000 / CHECK_SYSTEM_MS))
-uint8_t check_system_counter = 0;
 
-PROGMEM const char APP_TITLE[] = "Planter     v1.0"; // 16 chars for the LCD
+
+/** A 16 character splash-screen to show when booting up.  */
+PROGMEM const char APP_TITLE[] = "Planter     v1.0";
+
+/** The root diretory on the SD card in which to place all the log files.  */
 PROGMEM const char SD_DIR[] = "Plant1_0";
-
-
-/*******************************************************************************
- * Types
- ******************************************************************************/
-enum pump_state
-{
-    DISABLED,
-    ENABLED
-};
-typedef enum pump_state PumpState;
 
 
 /*******************************************************************************
@@ -63,27 +104,31 @@ __attribute__((always_inline)) inline void setup();
 __attribute__((always_inline)) inline void loop();
 __attribute__((always_inline)) inline void handle_ui();
 __attribute__((always_inline)) inline void show_status_on_lcd();
-void setup_buttons();
+
 void setup_pump();
-void setup_sd();
+void setup_lcd();
 void setup_rtc();
 void setup_buzzer();
-void setup_lcd();
-void shift_lcd_write4(const Lcd*, const uint8_t nibble);
-void recheck_system();
+void setup_buttons();
+void setup_sd();
+
+void read_sensors();
 void check_lamp();
+void toggle_lamp();
+void set_lamp_enabled(bool);
 void check_pump();
 void start_pump();
-void toggle_lamp();
-void menu_function_dispatch(MenuMode);
 void set_lcd_enabled(bool);
-void set_lamp_enabled(bool);
-void on_water_level_change(BuoyLevel);
-void fatal_error_P(const char*, const char*);
+void check_log();
+
 void menu_edit_date_callback(struct tm);
 void menu_edit_settings_callback(Settings);
+void menu_function_dispatch(MenuMode);
+void shift_lcd_write4(const Lcd*, const uint8_t nibble);
+void on_water_level_change(BuoyLevel);
 void sd_set_file_date_time(uint16_t* date, uint16_t* time);
-void check_log();
+
+void fatal_error_P(const char*, const char*);
 
 
 /*******************************************************************************
@@ -94,22 +139,23 @@ void check_log();
 #define PIN_MOIST_MUX            0 // ADC0
 
 // Input
-const Pinout pin_buoy    = {&PORTC, PORTC3};
-const Pinout pin_humid   = {&PORTC, PORTC1};
-const Pinout pin_moist   = {&PORTC, PORTC0};
-const Pinout pin_flow    = {&PORTD, PORTD2}; // only used for INT0 interupt!
-const Pinout pin_buttons = {&PORTC, PORTC2};
+const Pinout pin_buoy    = {&PORTC, PORTC3}; ///< Buoy sensor
+const Pinout pin_humid   = {&PORTC, PORTC1}; ///< Humidity sensor
+const Pinout pin_moist   = {&PORTC, PORTC0}; ///< Moisture/Temperature sensor
+const Pinout pin_buttons = {&PORTC, PORTC2}; ///< Buttons sensor
+const Pinout pin_flow    = {&PORTD, PORTD2}; ///< Water flow sensor
+                                             ///< only used for INT0 interupt!
 
 // Output
-const Pinout pin_pump = {&PORTB, PORTB1};
-const Pinout pin_lamp = {&PORTD, PORTD0};
-const Pinout pin_buzz = {&PORTD, PORTD7};
-const Pinout pin_lcd_data = {&PORTD, PORTD3};
-const Pinout pin_lcd_clk  = {&PORTB, PORTB0};
-const Pinout pin_lcd_backlight = {&PORTD, PORTD6};
+const Pinout pin_pump = {&PORTB, PORTB1};          ///< Pump output
+const Pinout pin_lamp = {&PORTD, PORTD0};          ///< Lamp output
+const Pinout pin_buzz = {&PORTD, PORTD7};          ///< Buzzer output
+const Pinout pin_lcd_data = {&PORTD, PORTD3};      ///< LCD data output
+const Pinout pin_lcd_clk  = {&PORTB, PORTB0};      ///< LCD clock output
+const Pinout pin_lcd_backlight = {&PORTD, PORTD6}; ///< LCD backlight switch
 
 
-// Breakout boards (pins + state)
+/** LCD breakout board */
 Lcd lcd = {
     .rs = {&PORTD, PORTD5},
     .en = {&PORTD, PORTD4},
@@ -117,6 +163,8 @@ Lcd lcd = {
 
 bool sd_card_available = false;
 SdFile log_dir;
+
+/** SD Card breakout board */
 SdClass SD = {
     .card = {
         .chip_select_pin = {&PORTB, PORTB2},
@@ -125,6 +173,8 @@ SdClass SD = {
         .clock_pin       = {&PORTB, PORTB5},
     }
 };
+
+/** Realtime Clock breakout board */
 Rtc1307 rtc = {
     .twi = {
         .pin_sda = {&PORTC, PORTC4},
@@ -140,11 +190,13 @@ bool fatal_error_active = false;
 char fatal_error_lcd0[16];
 char fatal_error_lcd1[16];
 
-Settings settings;
-struct tm current_time;
+uint8_t check_system_counter = 0;
 volatile bool recheck_scheduled = false;
 
-PumpState pump_state = DISABLED;
+Settings settings;
+struct tm current_time;
+
+PumpState pump_state = PUMP_DISABLED;
 uint8_t moisture_before_pumping = 0;
 
 bool lamp_override = false;
@@ -158,12 +210,13 @@ RING_BUFF_8_DEF(moisture, 4);
 RING_BUFF_8_DEF(humidity, 4);
 RING_BUFF_8_DEF(temperature, 4);
 
+
 /*******************************************************************************
  * Interrupts
  ******************************************************************************/
 ISR(INT0_vect)
 {
-    pump_flow_callback();
+    pump_flow_callback(); // counts flow sensor frequency
 }
 
 ISR(TIMER0_OVF_vect)
@@ -178,12 +231,12 @@ ISR(TIMER1_COMPA_vect)
 
 ISR(TIMER2_COMPA_vect)
 {
-    pinout_toggle(pin_buzz);
+    pinout_toggle(pin_buzz); // Creates the tone frequency when the buzzer is on
 }
 
 ISR(TWI_vect)
 {
-    twi_handle_vect(); // for the RTC
+    twi_handle_vect(); // Handle communication from the RTC's TWI interface
 }
 
 
@@ -205,6 +258,10 @@ int main(void)
 }
 
 
+/**
+ * @defgroup Setup Setup function
+ */
+/// @{
 void setup()
 {
     pinout_make_input(pin_flow);
@@ -238,7 +295,7 @@ void setup()
     TCCR1B |= _BV(WGM12) | _BV(CS12); // CTC mode, 256 prescaler
     TIMSK1 |= _BV(OCIE1A);
 
-    recheck_system();
+    read_sensors();
 
     // Setup SD Card
     setup_sd();
@@ -254,10 +311,89 @@ void setup()
                            + STARTUP_LOG_TIME;
     gmtime_r(&last_log, &log_last_time);
 
-    set_lcd_enabled(true);
+    set_lcd_enabled(true); // enable the UI!
 }
 
 
+void setup_pump()
+{
+    // INT0, falling edge
+    PIND |= _BV(pin_flow.pin); // enable pullup on INT0 pin
+    EIMSK |= _BV(INT0);
+    EICRA |= _BV(ISC01);
+}
+
+
+void setup_lcd()
+{
+    pinout_set(pin_lcd_backlight);
+
+    lcd.back_buffer = &lcd_buffer;
+    lcd_init(&lcd, 2, shift_lcd_write4);
+}
+
+
+void setup_rtc()
+{
+    if (!rtc_init(&rtc)) {
+        usart_println_P(PSTR("RTC init error"));
+        fatal_error_P(PSTR("RTC init error"), PSTR(""));
+    }
+}
+
+
+void setup_buzzer()
+{
+    TCCR2A |= _BV(WGM21);  // Mode CTC: OCRA
+}
+
+
+void setup_buttons()
+{
+    ADMUX |= _BV(REFS0) | (PIN_BUTTONS_MUX);  // AVcc <- external capacitor
+    ADCSRA |= _BV(ADPS2) | _BV(ADPS1);        // Prescaler: 64
+    ADCSRA |= _BV(ADEN);                      // Enable ADC
+}
+
+
+void setup_sd()
+{
+    usart_print_P(PSTR("Init SD card... "));
+    if (!sd_begin(&SD, sd_set_file_date_time)) {
+        char num_str[4];
+
+        sd_card_available = false;
+
+        usart_print_P(PSTR("SD CARD init failure: "));
+        usart_dump_array_8(&(SD.card.error_code), 1);
+
+        lcd_buffer_update_P(&lcd, 0, PSTR("SD Card Failure"));
+        lcd_buffer_update_P(&lcd, 1, PSTR("error code: "));
+
+        itoa(SD.card.error_code, num_str, 10);
+        lcd_buffer_update_at(&lcd, 1, 11, num_str);
+
+        _delay_ms(10000);
+        return;
+    }
+
+    // Open logging directory
+    char path[12];
+    strncpy_P(path, SD_DIR, 11);
+
+    sd_mkdir(&SD, path);
+    log_dir = sd_open(&SD, path, O_READ);
+    sd_file_sync(&log_dir);
+
+    sd_card_available = true;
+}
+
+/// @}
+
+
+/**
+ * The application's main loop
+ */
 void loop()
 {
     if (fatal_error_active) {
@@ -268,7 +404,7 @@ void loop()
             recheck_scheduled = false;
 
             if (pinout_is_clr(pin_pump)) {
-                recheck_system();
+                read_sensors();
                 check_lamp();
 
                 if (sd_card_available) {
@@ -293,20 +429,22 @@ void loop()
 }
 
 
-void recheck_system()
+/**
+ * Read the current value from our sensors:
+ *
+ *  - RTC time
+ *  - Buoyancy (water level)
+ *  - Moisture
+ *  - Humidity
+ *  - Temperature
+ */
+void read_sensors()
 {
     // The DHT11 moisture/humidity sensor can only be checked every second, so
     // we only read it every N cycles.
     static uint8_t mhum_cycle = 0;
 
     rtc_read(&current_time);
-
-    // turrn off LCD, if inactive
-    const int32_t time_left = difftime(mk_gmtime(&lcd_timeout_at),
-                                       mk_gmtime(&current_time));
-    if (time_left <= 0) {
-        set_lcd_enabled(false);
-    }
 
     read_buoyancy(pin_buoy, &on_water_level_change);
     read_moisture(PIN_MOIST_MUX, &moisture);
@@ -328,7 +466,7 @@ void check_lamp()
     if (lamp_override) {
         // The user forced the lamp on/off, but we only honor this until the
         // next start/stop time in the lamp's schedule.
-        if (lamp_override_on && curr == end ) {
+        if (lamp_override_on && curr == end) {
             set_lamp_enabled(false);
             lamp_override = false;
         } else if (!lamp_override_on && curr == start) {
@@ -338,15 +476,20 @@ void check_lamp()
     } else {
         if (end > start) {
             // lamp scheduled to turn on then off in the same calendar day
-            set_lamp_enabled(curr > start && curr < end);
+            set_lamp_enabled(curr >= start && curr < end);
         } else {
             // lamp scheduled to turn on one day then off after midnight
-            set_lamp_enabled(curr > start || curr < end);
+            set_lamp_enabled(curr >= start || curr < end);
         }
     }
 }
 
 
+/*
+ * If the pump is currently running, check if it has pumped enough water yet
+ * and stop it. If it isn't running, check if it's scheduled watering time has
+ * arrived.
+ */
 void check_pump()
 {
     if (pinout_is_set(pin_pump)) {
@@ -400,6 +543,9 @@ void toggle_lamp()
 }
 
 
+/*
+ * Respond to key presses and display the correct screen to the user.
+ */
 void handle_ui()
 {
     const KeyCode key = keycode(PIN_BUTTONS_MUX);
@@ -413,6 +559,12 @@ void handle_ui()
         }
     }
 
+    // turrn off LCD, if inactive
+    const int32_t time_left = difftime(mk_gmtime(&lcd_timeout_at),
+                                       mk_gmtime(&current_time));
+    if (time_left <= 0) {
+        set_lcd_enabled(false);
+    }
     if (!lcd_is_on) {
         return; // User is AFK
     }
@@ -439,6 +591,9 @@ void handle_ui()
 }
 
 
+/*
+ * Respond to the user choosing a new date or time via the menu.
+ */
 void menu_edit_date_callback(struct tm new)
 {
     int32_t offset = difftime(mk_gmtime(&new), mk_gmtime(&current_time));
@@ -464,6 +619,9 @@ void menu_edit_date_callback(struct tm new)
 }
 
 
+/*
+ * Respond to the user choosing new settings via the menu.
+ */
 void menu_edit_settings_callback(Settings new)
 {
     const LogPeriod prev_period = settings.log_period;
@@ -477,6 +635,9 @@ void menu_edit_settings_callback(Settings new)
 }
 
 
+/*
+ * Respond to the user choosing to execute some action via the menu.
+ */
 void menu_function_dispatch(MenuMode menu)
 {
     switch (menu) {
@@ -495,6 +656,9 @@ void menu_function_dispatch(MenuMode menu)
 }
 
 
+/*
+ * Display the plant's vital statistics on the screen.
+ */
 void show_status_on_lcd()
 {
     char line[16];
@@ -515,56 +679,6 @@ void show_status_on_lcd()
 }
 
 
-void setup_buttons()
-{
-    ADMUX |= _BV(REFS0) | (PIN_BUTTONS_MUX);  // AVcc <- external capacitor
-    ADCSRA |= _BV(ADPS2) | _BV(ADPS1);        // Prescaler: 64
-    ADCSRA |= _BV(ADEN);                      // Enable ADC
-}
-
-
-void setup_pump()
-{
-    // INT0, falling edge
-    PIND |= _BV(pin_flow.pin); // enable pullup on INT0 pin
-    EIMSK |= _BV(INT0);
-    EICRA |= _BV(ISC01);
-}
-
-
-void setup_sd()
-{
-    usart_print_P(PSTR("Init SD card... "));
-    if (!sd_begin(&SD, sd_set_file_date_time)) {
-        char num_str[4];
-
-        sd_card_available = false;
-
-        usart_print_P(PSTR("SD CARD init failure: "));
-        usart_dump_array_8(&(SD.card.error_code), 1);
-
-        lcd_buffer_update_P(&lcd, 0, PSTR("SD Card Failure"));
-        lcd_buffer_update_P(&lcd, 1, PSTR("error code: "));
-
-        itoa(SD.card.error_code, num_str, 10);
-        lcd_buffer_update_at(&lcd, 1, 11, num_str);
-
-        _delay_ms(10000);
-        return;
-    }
-
-    // Open logging directory
-    char path[12];
-    strncpy_P(path, SD_DIR, 11);
-
-    sd_mkdir(&SD, path);
-    log_dir = sd_open(&SD, path, O_READ);
-    sd_file_sync(&log_dir);
-
-    sd_card_available = true;
-}
-
-
 void sd_set_file_date_time(uint16_t* date, uint16_t* time)
 {
     const time_t tz_time = mk_gmtime(&current_time) - SD_TIMEZONE_OFFSET;
@@ -576,6 +690,9 @@ void sd_set_file_date_time(uint16_t* date, uint16_t* time)
 }
 
 
+/*
+ * Respond to changes in the water level.
+ */
 void on_water_level_change(BuoyLevel level)
 {
     if (level == BUOY_UP) {
@@ -584,33 +701,17 @@ void on_water_level_change(BuoyLevel level)
         }
     } else {
         // No water!
-        pump_state = DISABLED;
+        pump_state = PUMP_DISABLED;
         set_lcd_enabled(true);
         buzzer_turn_on();
     }
 }
 
 
-void setup_rtc()
-{
-    if (!rtc_init(&rtc)) {
-        usart_println_P(PSTR("RTC init error"));
-        lcd_clear(&lcd);
-        lcd_buffer_update_P(&lcd, 0, PSTR("RTC init error"));
-        for(;;)
-            ; /* block FOREVER */
-    }
-}
-
-
-void setup_buzzer()
-{
-    TCCR2A |= _BV(WGM21);  // Mode CTC: OCRA
-}
-
-
 /*
- * Control the LCD data pins with 2 pins, instead of 4, via the shift register
+ * Normally the LCD component uses 4 or 8 pins to drive its data. To conserve
+ * pins on the microcontroller, we use a 2-wire shift register to drive those 4
+ * pins.
  */
 void shift_lcd_write4(__attribute__((unused)) const Lcd* lcd,
                       const uint8_t nibble)
@@ -627,29 +728,23 @@ void shift_lcd_write4(__attribute__((unused)) const Lcd* lcd,
 }
 
 
-void setup_lcd()
-{
-    pinout_set(pin_lcd_backlight);
-
-    lcd.back_buffer = &lcd_buffer;
-    lcd_init(&lcd, 2, shift_lcd_write4);
-}
-
-
+/*
+ * Turn the LCD screen on or off and adjust the LCD timeout accordingly.
+ */
 void set_lcd_enabled(const bool enabled)
 {
     if (enabled) {
-    // updates screen timeout
-    time_t timeout_at = mk_gmtime(&current_time) + SCREEN_TIMEOUT;
-    gmtime_r(&timeout_at, &lcd_timeout_at);
+        // updates screen timeout
+        time_t timeout_at = mk_gmtime(&current_time) + SCREEN_TIMEOUT;
+        gmtime_r(&timeout_at, &lcd_timeout_at);
 
-    if (lcd_is_on) {
-        return;
-    }
-    lcd_is_on = true;
+        if (lcd_is_on) {
+            return;
+        }
+        lcd_is_on = true;
 
-    pinout_set(pin_lcd_backlight);
-    lcd_display(&lcd, true);
+        pinout_set(pin_lcd_backlight);
+        lcd_display(&lcd, true);
     } else {
         if (!lcd_is_on) {
             return;
@@ -661,6 +756,9 @@ void set_lcd_enabled(const bool enabled)
 }
 
 
+/*
+ * Turn the lamp on or off and update the lamp log file.
+ */
 void set_lamp_enabled(const bool enabled)
 {
     if (pinout_is_set(pin_lamp) == enabled) {
@@ -678,6 +776,10 @@ void set_lamp_enabled(const bool enabled)
 }
 
 
+/*
+ * Alert the user of some kind of error condition with the buzzer and a message
+ * on the LCD that cannot be dismissed without power-cycling.
+ */
 void fatal_error_P(const char* lcd0, const char* lcd1)
 {
     fatal_error_active = true;
@@ -687,12 +789,16 @@ void fatal_error_P(const char* lcd0, const char* lcd1)
 }
 
 
+/*
+ * Check if it is time to write to the periodic log file and do so.
+ */
 void check_log()
 {
     const struct tm next_time =
         log_next_time(log_last_time, settings.log_period);
     const int32_t time_left = difftime(mk_gmtime(&next_time),
             mk_gmtime(&current_time));
+
     if (time_left < 0) {
         log_last_time = current_time;
 

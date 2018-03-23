@@ -16,6 +16,14 @@
 #define PUMP_STATUS_UNPLUGGED       -2
 
 
+enum pump_state
+{
+    PUMP_DISABLED,
+    PUMP_ENABLED
+};
+typedef enum pump_state PumpState;
+
+
 volatile uint8_t pump_count;
 double pump_total_ul;
 uint16_t pump_started_at;

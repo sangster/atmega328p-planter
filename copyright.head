@@ -1,4 +1,5 @@
-/*
+/* @file
+ *
  *  "Planter" is a device that control a houseplant's water and light schedules.
  *  Copyright (C) 2018  Jon Sangster
  *
@@ -15,8 +16,3 @@
  *  You should have received a copy of the GNU General Public License along
  *  with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-power_x = 30;
-power_y = 45;
-power_z = 68;
-
-power_r =  4;
