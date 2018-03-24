@@ -1,39 +1,65 @@
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 #include <log.h>
 
-PROGMEM const char STATUS_LOG_PATTERN[] = "%04d-%02d.log";
-PROGMEM const char STATUS_HEAD[] =
-    "Time,Moisture (%),Humidity (%),Temperature (C),Time of Last Watering,"
-    "Conf: Lamp Start,Conf: Lamp Period (Hrs),Conf: Pump Minimum (% Moisture),"
-    "Conf: Pump Delay (Hrs),Conf: Pump Amount (mL),Conf: Log Period (Mins),"
-    "Lamp State,Buoy State";
+PROGMEM static const char STATUS_LOG_PATTERN[] = LOG_STATUS_FILENAME_PATTERN;
+PROGMEM static const char STATUS_HEAD[]        = LOG_STATUS_HEADER;
+PROGMEM static const char PUMP_LOG[]           = LOG_PUMP_FILENAME;
+PROGMEM static const char PUMP_HEAD[]          = LOG_PUMP_HEADER;
+PROGMEM static const char LAMP_LOG[]           = LOG_LAMP_FILENAME;
+PROGMEM static const char LAMP_HEAD[]          = LOG_LAMP_HEADER;
 
-PROGMEM const char PUMP_LOG[] = "Water.log";
-PROGMEM const char PUMP_HEAD[] = "Time,Moisture Before,mL";
-
-PROGMEM const char LAMP_LOG[] = "Lamp.log";
-PROGMEM const char LAMP_HEAD[] = "Time,New Lamp State";
-
-PROGMEM const char LOG_PERIOD_5_MINS[]   = "00:05";
-PROGMEM const char LOG_PERIOD_10_MINS[]  = "00:10";
-PROGMEM const char LOG_PERIOD_15_MINS[]  = "00:15";
-PROGMEM const char LOG_PERIOD_30_MINS[]  = "00:30";
-PROGMEM const char LOG_PERIOD_1_HOUR[]   = "01:00";
-PROGMEM const char LOG_PERIOD_2_HOURS[]  = "02:00";
-PROGMEM const char LOG_PERIOD_3_HOURS[]  = "03:00";
-PROGMEM const char LOG_PERIOD_4_HOURS[]  = "04:00";
-PROGMEM const char LOG_PERIOD_6_HOURS[]  = "06:00";
-PROGMEM const char LOG_PERIOD_8_HOURS[]  = "08:00";
-PROGMEM const char LOG_PERIOD_12_HOURS[] = "12:00";
-PROGMEM const char LOG_PERIOD_24_HOURS[] = "24:00";
-PROGMEM const char LOG_PERIOD_48_HOURS[] = "48:00";
-PROGMEM const char LOG_PERIOD_UNKNOWN[]  = "??:??";
+PROGMEM static const char LOG_PERIOD_5_MINS[]   = "00:05";
+PROGMEM static const char LOG_PERIOD_10_MINS[]  = "00:10";
+PROGMEM static const char LOG_PERIOD_15_MINS[]  = "00:15";
+PROGMEM static const char LOG_PERIOD_30_MINS[]  = "00:30";
+PROGMEM static const char LOG_PERIOD_1_HOUR[]   = "01:00";
+PROGMEM static const char LOG_PERIOD_2_HOURS[]  = "02:00";
+PROGMEM static const char LOG_PERIOD_3_HOURS[]  = "03:00";
+PROGMEM static const char LOG_PERIOD_4_HOURS[]  = "04:00";
+PROGMEM static const char LOG_PERIOD_6_HOURS[]  = "06:00";
+PROGMEM static const char LOG_PERIOD_8_HOURS[]  = "08:00";
+PROGMEM static const char LOG_PERIOD_12_HOURS[] = "12:00";
+PROGMEM static const char LOG_PERIOD_24_HOURS[] = "24:00";
+PROGMEM static const char LOG_PERIOD_48_HOURS[] = "48:00";
+PROGMEM static const char LOG_PERIOD_UNKNOWN[]  = "??:??";
 
 
 struct tm log_last_time = {0};
 
 
+/**
+ * @return a handle to the status log file. If it doesn't exist, it will be
+ *   created with the correct file header
+ */
 static SdFile open_status_file(SdFile* dir, struct tm current_time);
+
+/**
+ * @return a handle to the pump log file. If it doesn't exist, it will be
+ *   created with the correct file header
+ */
 static SdFile open_pump_file(SdFile* dir);
+
+/**
+ * @return a handle to the lamp log file. If it doesn't exist, it will be
+ *   created with the correct file header
+ */
 static SdFile open_lamp_file(SdFile* dir);
 
 
@@ -100,9 +126,9 @@ void log_status(SdFile* dir, const struct tm current_time,
     sd_file_send(&file, ',');
 
     switch (buoy_state) {
-        case BUOY_UP:         sd_file_write_P(&file, PSTR("Up")); break;
-        case BUOY_DOWN:       sd_file_write_P(&file, PSTR("Down")); break;
-        case BUOY_NO_READING: sd_file_write_P(&file, PSTR("???")); break;
+        case BUOY_UP:      sd_file_write_P(&file, PSTR("Up")); break;
+        case BUOY_DOWN:    sd_file_write_P(&file, PSTR("Down")); break;
+        case BUOY_UNKNOWN: sd_file_write_P(&file, PSTR("???")); break;
     }
 
     sd_file_crlf(&file);
@@ -240,7 +266,7 @@ struct tm log_next_time(struct tm time, LogPeriod period)
 }
 
 
-const char* log_period_label_P(const LogPeriod period)
+PGM_P log_period_label_P(const LogPeriod period)
 {
     switch (period) {
         case LOG_5_MINS:   return LOG_PERIOD_5_MINS;

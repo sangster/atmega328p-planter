@@ -1,14 +1,49 @@
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 #include "menu.h"
 
-// 2 spaces + symbol will ensure the symbols align with the physical buttons
-PROGMEM const char MENU_KEYS[] = "  \xc5   \xc6   \xc4   \xf7";
 Mode current_mode = SHOW_STATUS;
 MenuMode current_menu_mode = MENU_NONE;
 SubmenuMode current_submenu_mode = SUBMENU_NONE;
 
+PROGMEM static const char MENU_KEYS[] = MENU_LABEL;
+static struct tm edit_time;
+static Settings edit_settings;
+
+/**
+ * Responds to user keypresses when they are editing something in an edit menu
+ */
 static void handle_menu_edit_keypress(Lcd*, uint8_t key, MenuDateCallback,
                                       MenuSettingsCallback);
-static uint8_t inc_num(uint8_t num, uint8_t positive, uint8_t min, uint8_t max);
+
+/**
+ * Incredment/decrement the given number, cycling between min and max
+ *
+ * @param [in] num       The number to increment/decrement
+ * @param [in] positive  `true` if the number should be incremented; `false` if
+ *   it should be decremented
+ * @param [in] min       The minimum value. If the user decrements below it,
+ *   the number will loop aroundto the `max` value
+ * @param [in] max       The maximum value. If the user increments above it,
+ *   the number will loop aroundto the `min` value
+ */
+static uint8_t inc_num(uint8_t num, bool positive, uint8_t min, uint8_t max);
 
 
 void handle_menu_select(Lcd* lcd, uint8_t key, MenuFunction callback)
@@ -308,7 +343,7 @@ void handle_menu_edit_keypress(Lcd* lcd, uint8_t key,
 }
 
 
-uint8_t inc_num(uint8_t num, uint8_t positive, uint8_t min, uint8_t max)
+uint8_t inc_num(uint8_t num, bool positive, uint8_t min, uint8_t max)
 {
     if (positive) {
         return num == max ? min : num + 1;

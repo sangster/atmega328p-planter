@@ -1,5 +1,23 @@
 #ifndef MENU_H
 #define MENU_H
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 #include <stdio.h>
 #include <time.h>
@@ -12,15 +30,19 @@
 #include "log.h"
 #include "settings.h"
 
+// 2 spaces + symbol will ensure the symbols align with the physical buttons
+#define MENU_LABEL  "  \xc5   \xc6   \xc4   \xf7"
+
+/** The UI's modes */
 enum mode
 {
-    SHOW_STATUS,
-    SELECT_MENU,
-    EDIT_MENU,
+#define MODE_FIRST  SHOW_STATUS
+    SHOW_STATUS,  ///< Show the plant's current statistics. The default mode
+    SELECT_MENU,  ///< Choose an "edit menu"
+    EDIT_MENU,    ///< Edit a particular system setting
+#define MODE_LAST   EDIT_MENU
 };
 typedef enum mode Mode;
-#define MODE_FIRST  SHOW_STATUS
-#define MODE_LAST   EDIT_MENU
 
 
 enum menu_mode
@@ -59,9 +81,9 @@ enum submenu_mode
 #define SET_LAMP_LAST   SET_LAMP_PERIOD
 
 #define SET_PUMP_FIRST  SET_PUMP_MIN
-    SET_PUMP_MIN,   // The minimum moisture to trigger the pump
-    SET_PUMP_DELAY, // The minimum amount of time between two waterings
-    SET_PUMP_10ML,  // The amount of water to pump, in multiples of 10 mL
+    SET_PUMP_MIN,   ///< The minimum moisture to trigger the pump
+    SET_PUMP_DELAY, ///< The minimum amount of time between two waterings
+    SET_PUMP_10ML,  ///< The amount of water to pump, in multiples of 10 mL
 #define SET_PUMP_LAST   SET_PUMP_10ML
 
 #define SET_LOG_FIRST   SET_LOG_PERIOD
@@ -70,21 +92,25 @@ enum submenu_mode
 };
 typedef enum submenu_mode SubmenuMode;
 
-typedef void (*MenuFunction)(MenuMode menu);
+/** A callback called when the user chooses an action from the menu. */
+typedef void (*MenuFunction)(MenuMode);
+
+/** A callback called when the user changes the system date/time */
 typedef void (*MenuDateCallback)(struct tm);
+
+/** A callback called when the user changes the system settings */
 typedef void (*MenuSettingsCallback)(Settings);
 
 
-extern PROGMEM const char MENU_KEYS[];
 extern Mode current_mode;
 extern MenuMode current_menu_mode;
 extern SubmenuMode current_submenu_mode;
 
-struct tm edit_time;
-Settings edit_settings;
 
-
+/** Respond to the user selecting an "edit menu" */
 void handle_menu_select(Lcd*, uint8_t key, MenuFunction);
+
+/** Respond to the user using an "edit menu" */
 void handle_menu_edit(Lcd*, uint8_t key, MenuDateCallback, MenuSettingsCallback);
 
 

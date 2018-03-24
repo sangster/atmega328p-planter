@@ -1,37 +1,29 @@
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 #include "keys.h"
 
 static KeyCode parse_keypress(uint16_t reading);
 
 
-KeyCode get_touch_button(Pinout const keys[])
-{
-    static uint8_t pressed_key = 0xFF;
-    bool is_any_key_pressed = false;
-
-    for (uint8_t i = 0; i < 4; ++i) {
-        if (pinout_is_set(keys[i])) {
-            is_any_key_pressed = true;
-
-            if (pressed_key != i) {
-                pressed_key = i;
-                return i + 1;
-            } else {
-                pressed_key = i;
-                return KEY_NONE;
-            }
-        }
-    }
-
-    if (!is_any_key_pressed) {
-        pressed_key = 0xFF;
-    }
-    return KEY_NONE;
-}
-
-
 KeyCode keycode(uint8_t adc_mask)
 {
-    static KeyCode buffer[5];
+    static KeyCode buffer[KEY_DEBOUNCE_DEPTH];
     static KeyCode pressed_key = KEY_NONE;
     static KeyCode prev_keypress = KEY_NONE;
     static size_t idx = 0;
@@ -42,10 +34,10 @@ KeyCode keycode(uint8_t adc_mask)
 
     const KeyCode key = parse_keypress(ADC);
     buffer[idx] = key;
-    idx = (idx + 1) % 5;
+    idx = (idx + 1) % KEY_DEBOUNCE_DEPTH;
 
     bool all_same = true;
-    for (size_t i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < KEY_DEBOUNCE_DEPTH; ++i) {
         if (buffer[i] != key) {
             all_same = false;
             break;

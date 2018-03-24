@@ -60,23 +60,28 @@
 #define SIXTEENTH 0.625
 
 
-/*******************************************************************************
- * Constants
- ******************************************************************************/
-extern const uint16_t tune[];
-extern const float duration[];
+extern const uint16_t tune[];  ///< The notes that comprise the alarm tune
+extern const float duration[]; ///< The duration of each note in tune[]
+
+extern bool buzzer_is_on; ///< If the buzzer is currently active
 
 
-/*******************************************************************************
- * Variables
- ******************************************************************************/
-extern bool buzzer_is_on;
+/**
+ * Turn the buzzer on or off.
+ *
+ * This only turns it on. You still need to call buzzer_sound() in response to
+ * the #TIMER2_COMPA_vect inturrupt to product the correct notes.
+ */
+void buzzer_set_enabled(bool);
 
+/**
+ * Turns the buzzer on or off at the correct times to product the correct
+ * frequency of the curent note in the tune[].
+ *
+ * This function must be called in response to the #TIMER2_COMPA_vect interrupt.
+ *
+ * @param pin The pin the buzzer is connected to
+ */
+void buzzer_sound(Pinout);
 
-/*******************************************************************************
- * Functions
- ******************************************************************************/
-void buzzer_turn_on();
-void buzzer_turn_off();
-void buzzer_sound(Pinout buzzer_pin);
 #endif//BUZZER_H

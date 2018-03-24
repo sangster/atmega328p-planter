@@ -1,6 +1,24 @@
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 #include "sensors.h"
 
-BuoyLevel buoy_state = BUOY_NO_READING;
+BuoyLevel buoy_state = BUOY_UNKNOWN;
 
 
 void read_buoyancy(Pinout pin_buoy, BuoyOnChange callback)
@@ -23,11 +41,11 @@ void read_moisture(uint8_t adc_mask, RingBuff8* moisture)
 }
 
 
-void sensors_to_s(char line[16], uint8_t moisture, uint8_t humidity,
+void sensors_to_s(char dst[16], uint8_t moisture, uint8_t humidity,
                   uint8_t temperature)
 {
     char *p;
-    p = &line[0];
+    p = &dst[0];
 
     *(p++) = 'M';
     utoa(moisture, p, 10);

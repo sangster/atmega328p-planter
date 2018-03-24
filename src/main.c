@@ -196,7 +196,6 @@ volatile bool recheck_scheduled = false;
 Settings settings;
 struct tm current_time;
 
-PumpState pump_state = PUMP_DISABLED;
 uint8_t moisture_before_pumping = 0;
 
 bool lamp_override = false;
@@ -243,6 +242,7 @@ ISR(TWI_vect)
 /*******************************************************************************
  * Main Program
  ******************************************************************************/
+
 __attribute__((OS_main))
 int main(void)
 {
@@ -697,13 +697,12 @@ void on_water_level_change(BuoyLevel level)
 {
     if (level == BUOY_UP) {
         if (buzzer_is_on) {
-            buzzer_turn_off();
+            buzzer_set_enabled(false);
         }
     } else {
         // No water!
-        pump_state = PUMP_DISABLED;
         set_lcd_enabled(true);
-        buzzer_turn_on();
+        buzzer_set_enabled(true);
     }
 }
 
@@ -783,7 +782,7 @@ void set_lamp_enabled(const bool enabled)
 void fatal_error_P(const char* lcd0, const char* lcd1)
 {
     fatal_error_active = true;
-    buzzer_turn_on();
+    buzzer_set_enabled(true);
     strncpy_P(fatal_error_lcd0, lcd0, 16);
     strncpy_P(fatal_error_lcd1, lcd1, 16);
 }

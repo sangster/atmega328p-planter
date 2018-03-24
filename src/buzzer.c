@@ -1,6 +1,25 @@
+/* @file
+ *
+ *  "Planter" is a device that control a houseplant's water and light schedules.
+ *  Copyright (C) 2018  Jon Sangster
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the Free
+ *  Software Foundation, either version 3 of the License, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ *  more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 #include "buzzer.h"
 
 bool buzzer_is_on = false;
+
 const uint16_t tune[] = {
     NOTE_D0, NOTE_D1, NOTE_D2, NOTE_D3, NOTE_D4, NOTE_D5, NOTE_D6, NOTE_D7,
     NOTE_DL1, NOTE_DL2, NOTE_DL3, NOTE_DL4, NOTE_DL5, NOTE_DL6, NOTE_DL7,
@@ -12,34 +31,40 @@ const float duration[] = {
     QUARTER, WHOLE, QUARTER, WHOLE, QUARTER, WHOLE, QUARTER, WHOLE, QUARTER,
     WHOLE, QUARTER, WHOLE, QUARTER
 };
+
 static const uint8_t buzzer_tune_length = sizeof(tune) / sizeof(tune[0]);
 
 static uint8_t note_index = 0;
 static uint16_t note_ends_at = 0;
 
 
-
+/**
+ * Return the smallest prescaler that can fit the given frequency.
+ *
+ * Depending on the frequency of a given note, the timer may be too short to
+ * produce it. The lower the frequency, the larger the prescaler required.
+ */
 static uint16_t tone_prescale(const uint16_t frequency);
+
+/// Tell the microcontroller which prescaler to use.
 static void set_prescaler(const uint16_t prescale);
 
 
-void buzzer_turn_on()
+void buzzer_set_enabled(const bool enabled)
 {
-    buzzer_is_on = true;
-    timer0_start();
+    if (enabled) {
+        buzzer_is_on = true;
+        timer0_start();
+    } else {
+        TIMSK2 &= ~_BV(OCIE2A);
+        buzzer_is_on = false;
+        note_index = 0;
+        note_ends_at = 0;
+    }
 }
 
 
-void buzzer_turn_off()
-{
-    TIMSK2 &= ~_BV(OCIE2A);
-    buzzer_is_on = false;
-    note_index = 0;
-    note_ends_at = 0;
-}
-
-
-void buzzer_sound(Pinout buzzer_pin)
+void buzzer_sound(const Pinout buzzer_pin)
 {
     if (!buzzer_is_on) {
         note_index = 0;
