@@ -7,12 +7,14 @@ wouldn't recommend you use this code for anything you deem to be important.
 
 For the sake of code-cleanliness, non-application code has been extracted to a
 helper library:
-[embedded-sangster_atmega328p](/sangster/embedded-sangster_atmega328p).
+[embedded-sangster_atmega328p](https://github.com/sangster/embedded-sangster_atmega328p).
 
 ## Features
 
  - An LCD screen which shows live statistics: Soil moisture, air humidity, air
    temperature, and the current date and time.
+ - To save power, the LCD turns off 1 minute after the user stops pressing
+   buttons.
  - A menu system which allows the user to change the runtime settings of the
    system (detailed below), using the four general-purpose buttons below the LCD
    screen.
@@ -117,6 +119,7 @@ Every time the grow light is turned on or off, the event is recorded in the
   - A cheapo desk lamp, with a "grow" lightbulb
   - 12v/2amp AC adapter
   - 12cm x 12cm x 9cm plastic project box
+  - A plastic container to act as the water resevoir
 
 ### Custom PCBs
 
@@ -156,6 +159,7 @@ The UI Panel's responsibilities are:
  - Providing headers to connect the LCD screen, also attached to box's lid.
  - Providing headers to connect to the alarm mute switch, also attache to the
    box's lid.
+ - Provide a trimmer to adjust the LCD backlight
 
 ##### Files
 
@@ -172,6 +176,81 @@ The open-source [OpenSCAD](http://www.openscad.org/) CAD modelling tool was used
 to determine where each component would be physicall located within the project
 box. These files are held in the [cad/](./cad/) directory, but the main file is
 [assembly.scad](./cad/assembly.scad).
+
+OpenSCAD is also use for printing out the pattern of holes you need to cut out
+of the project box to make room for buttons/LCD/etc by printing a 2D project of
+the 3D model.
+
+### Photos
+
+Because this project is to create an actual device, photos should help. Please
+keep in mind that this is my first embedded device. :)
+
+How the project started: an empty plastic box and a "mockup" of the major
+components on a breadboard.
+
+![The project box next to the breadboard version](photos/project-box-and-breadboard.jpg "The project box next to the breadboard version")
+
+---
+
+The homebrew motherboard. The relays switch the pump and lamp. The LM7805
+voltage regulator (right side of the image) bringe the 12v (required for the
+pump) down to 5v (required for the MCU and other components).
+
+![Motherboard PCB: front](photos/motherboard-front.jpg "Motherboard PCB: front")
+![Motherboard PCB: back](photos/motherboard-back.jpg "Motherboard PCB: back")
+
+---
+
+The components mounted to the box itself: the 12v AC adapter, motherboard,
+SD/RTC breakout board, and flow sensor.
+
+![Internal components, without lid](photos/box-assembly.jpg "Internal components, without lid")
+
+---
+
+The UI panel PCB. You can see the buttons alone are on the front side. This is
+so they can be pushed through holes cut in the lid. The remaining components
+are on the back, so the front can remain as flat as possible.
+
+On the back there is the LCD backlight trimmer, water-low-alarm buzzer, and LCD
+shift register (drives the LCD with 2 pins instead of 4)
+
+![UI Panel PCB: front](photos/ui-panel-front.jpg "UI Panel PCB: front")
+![UI Panel PCB: back](photos/ui-panel-back.jpg "UI Panel PCB: back")
+
+---
+
+The assembled lid. OpenSCAD provided the template used to cut out holes in the
+lid. The alignment was pretty critial to ensure the buttons on the PCB ligned
+up with the holes, as well as their icons on the LCD display. Also featured:
+the alarm mute switch.
+
+![Template of holes to cut out of front panel](photos/front-panel-cutout.jpg "Template of holes to cut out of front panel")
+![Template showing the buttons are correctly spaced](photos/front-panel-cutout-with-buttons.jpg "Template showing the buttons are correctly spaced")
+
+![Assembled UI panel: front](photos/lid-assembly-front.jpg "Assembled UI panel: front")
+![Assembled UI panel: back](photos/lid-assembly-back.jpg "Assembled UI panel: back")
+
+---
+
+Final assembly was simply plugging in all the wires to their correct headers.
+
+![UI Panel: wired to LCB and motherboard](photos/ui-panel-wiring.jpg "UI Panel: wired to LCB and motherboard")
+![Assembled Project](photos/assembly.jpg "Assembled Project")
+
+---
+
+And the initial test run. You can see the probe in the soil and the pump/float
+system in the water resevoir. The project is quite light, so I just screwed it
+to the top of the resevoir. Also featured: a bonsai tree near death from
+waiting for this project's completion.
+
+![The first test run of the system](photos/test-run.jpg "The first test run of the system")
+![Humidity/Moisture/Temperature probe in the soil](photos/sensor-in-soil.jpg "Humidity/Moisture/Temperature probe in the soil")
+![The pump and float in the water resevoir](photos/pump-and-float.jpg "The pump and float in the water resevoir")
+
+---
 
 ## Deployment
 
